@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文本处理 MCP</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .input-section { display: grid; gap: 15px; }
+        .textarea { width: 100%; min-height: 150px; padding: 12px; border: 1px solid #ddd; border-radius: 4px; resize: vertical; }
+        .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .results { display: grid; gap: 20px; }
+        .result-card { background: #f8f9fa; border-left: 4px solid #007bff; padding: 15px; position: relative; }
+        .copy-btn { position: absolute; top: 10px; right: 10px; padding: 4px 8px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px; }
+        .copy-btn:hover { background: #0056b3; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+        .stat { text-align: center; padding: 10px; background: white; border-radius: 4px; }
+        .keywords { display: flex; flex-wrap: wrap; gap: 8px; }
+        .keyword { background: #e9ecef; padding: 4px 8px; border-radius: 12px; font-size: 12px; }
+        .loading { opacity: 0.6; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="header">
+                <h1>文本处理 MCP</h1>
+                <p>基于 Model Context Protocol 的文本处理工具</p>
+            </div>
+            
+            <div class="card">
+                <div class="input-section">
+                    <textarea 
+                        v-model="inputText" 
+                        class="textarea" 
+                        placeholder="请输入要处理的文本..."
+                        @input="clearResults">
+                    </textarea>
+                    
+                    <div class="controls">
+                        <button @click="countWords" class="btn btn-primary" :disabled="!inputText || loading">
+                            统计字数
+                        </button>
+                        
+                        <select v-model="transformOperation" class="select">
+                            <option value="uppercase">转大写</option>
+                            <option value="lowercase">转小写</option>
+                            <option value="capitalize">首字母大写</option>
+                            <option value="reverse">反转文本</option>
+                        </select>
+                        <button @click="transformText" class="btn btn-primary" :disabled="!inputText || loading">
+                            转换文本
+                        </button>
+                        
+                        <button @click="cleanText" class="btn btn-secondary" :disabled="!inputText || loading">
+                            清理文本
+                        </button>
+                        
+                        <button @click="extractKeywords" class="btn btn-secondary" :disabled="!inputText || loading">
+                            提取关键词
+                        </button>
+                        
+                        <select v-model="jsonOperation" class="select">
+                            <option value="beautify">美化JSON</option>
+                            <option value="minify">压缩JSON</option>
+                            <option value="validate">验JSON</option>
+                        </select>
+                        <button @click="formatJson" class="btn btn-secondary" :disabled="!inputText || loading">
+                            JSON处理
+                        </button>
+                        
+                        <button @click="clearAll" class="btn" style="background: #dc3545; color: white;">
+                            清空
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div v-if="loading" class="card">
+                <p>处理中...</p>
+            </div>
+            
+            <div v-if="results.length > 0" class="results">
+                <div v-for="result in results" :key="result.id" class="card result-card">
+                    <button @click="copyResult(result)" class="copy-btn">复制</button>
+                    <h3>{{ result.title }}</h3>
+                    
+                    <div v-if="result.type === 'stats'" class="stats">
+                        <div class="stat">
+                            <div style="font-size: 24px; font-weight: bold; color: #007bff;">{{ result.data.words }}</div>
+                            <div>单词数</div>
+                        </div>
+                        <div class="stat">
+                            <div style="font-size: 24px; font-weight: bold; color: #28a745;">{{ result.data.characters }}</div>
+                            <div>字符数</div>
+                        </div>
+                        <div class="stat">
+                            <div style="font-size: 24px; font-weight: bold; color: #ffc107;">{{ result.data.charactersNoSpaces }}</div>
+                            <div>无空格字符</div>
+                        </div>
+                        <div class="stat">
+                            <div style="font-size: 24px; font-weight: bold; color: #dc3545;">{{ result.data.lines }}</div>
+                            <div>行数</div>
+                        </div>
+                    </div>
+                    
+                    <div v-else-if="result.type === 'text'">
+                        <textarea readonly class="textarea" :value="result.data" style="min-height: 100px;"></textarea>
+                    </div>
+                    
+                    <div v-else-if="result.type === 'keywords'" class="keywords">
+                        <span v-for="keyword in result.data" :key="keyword.word" class="keyword">
+                            {{ keyword.word }} ({{ keyword.count }})
+                        </span>
+                    </div>
+                    
+                    <div v-else-if="result.type === 'validation'">
+                        <div :style="{ color: result.data.valid ? '#28a745' : '#dc3545', fontWeight: 'bold' }">
+                            {{ result.data.message }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+        
+        createApp({
+            data() {
+                return {
+                    inputText: '',
+                    transformOperation: 'uppercase',
+                    jsonOperation: 'beautify',
+                    results: [],
+                    loading: false
+                };
+            },
+            methods: {
+                async processText(type, operation = null) {
+                    if (!this.inputText.trim()) return;
+                    
+                    this.loading = true;
+                    try {
+                        const response = await fetch('/api/process', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                text: this.inputText,
+                                type,
+                                operation
+                            })
+                        });
+                        
+                        const data = await response.json();
+                        if (data.success) {
+                            return data.result;
+                        } else {
+                            throw new Error(data.error);
+                        }
+                    } catch (error) {
+                        alert('处理失败: ' + error.message);
+                        return null;
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                
+                async countWords() {
+                    const result = await this.processText('count');
+                    if (result) {
+                        this.results.unshift({
+                            id: Date.now(),
+                            title: '文本统计',
+                            type: 'stats',
+                            data: result
+                        });
+                    }
+                },
+                
+                async transformText() {
+                    const result = await this.processText('transform', this.transformOperation);
+                    if (result) {
+                        this.results.unshift({
+                            id: Date.now(),
+                            title: `文本转换 (${this.getOperationName(this.transformOperation)})`,
+                            type: 'text',
+                            data: result
+                        });
+                    }
+                },
+                
+                async cleanText() {
+                    const result = await this.processText('clean');
+                    if (result) {
+                        this.results.unshift({
+                            id: Date.now(),
+                            title: '文本清理',
+                            type: 'text',
+                            data: result
+                        });
+                    }
+                },
+                
+                async extractKeywords() {
+                    const result = await this.processText('keywords');
+                    if (result) {
+                        this.results.unshift({
+                            id: Date.now(),
+                            title: '关键词提取',
+                            type: 'keywords',
+                            data: result
+                        });
+                    }
+                },
+                
+                async formatJson() {
+                    const result = await this.processText('json', this.jsonOperation);
+                    if (result) {
+                        const isValidation = this.jsonOperation === 'validate';
+                        this.results.unshift({
+                            id: Date.now(),
+                            title: `JSON${this.getJsonOperationName(this.jsonOperation)}`,
+                            type: isValidation ? 'validation' : 'text',
+                            data: result
+                        });
+                    }
+                },
+                
+                getOperationName(op) {
+                    const names = {
+                        uppercase: '大写',
+                        lowercase: '小写',
+                        capitalize: '首字母大写',
+                        reverse: '反转'
+                    };
+                    return names[op] || op;
+                },
+                
+                getJsonOperationName(op) {
+                    const names = {
+                        beautify: '美化',
+                        minify: '压缩',
+                        validate: '验证'
+                    };
+                    return names[op] || op;
+                },
+                
+                clearResults() {
+                    this.results = [];
+                },
+                
+                clearAll() {
+                    this.inputText = '';
+                    this.results = [];
+                },
+                
+                copyResult(result) {
+                    let textToCopy = '';
+                    if (result.type === 'text') {
+                        textToCopy = result.data;
+                    } else if (result.type === 'keywords') {
+                        textToCopy = result.data.map(k => `${k.word}: ${k.count}`).join('\n');
+                    } else if (result.type === 'stats') {
+                        textToCopy = `单词数: ${result.data.words}\n字符数: ${result.data.characters}\n无空格字符: ${result.data.charactersNoSpaces}\n行数: ${result.data.lines}`;
+                    } else if (result.type === 'validation') {
+                        textToCopy = result.data.message;
+                    }
+                    
+                    navigator.clipboard.writeText(textToCopy).then(() => {
+                        alert('已复制到剪贴板');
+                    }).catch(() => {
+                        alert('复制失败');
+                    });
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

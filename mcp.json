@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "text-processing": {
+      "command": "node",
+      "args": ["server.js"],
+      "cwd": "/Users/fruge365/个人/mcp"
+    }
+  }
+}
